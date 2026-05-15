@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Tracer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <h1>Image Tracer <button id="helpBtn" title="Keyboard shortcuts (?)">?</button></h1>
+
+      <section class="panel">
+        <h2>Image</h2>
+        <input type="file" id="imageLoader" accept="image/*">
+        <button id="toggleImageBtn">Hide Image</button>
+      </section>
+
+      <section class="panel">
+        <h2>Tools</h2>
+        <div class="buttonRow">
+          <button id="traceToolBtn" class="toolBtn active">Trace</button>
+          <button id="fillToolBtn" class="toolBtn">Fill</button>
+          <button id="eyedropperBtn" class="toolBtn">Eyedropper</button>
+        </div>
+        <button id="cancelTraceBtn">Cancel Current Polygon</button>
+        <p id="modeLabel">Mode: Trace</p>
+        <div id="curveSelector" style="display: none; margin-top: 0.5rem;">
+          <p style="margin: 0 0 0.3rem; font-size: 0.85rem; color: var(--muted);">Next curve type:</p>
+          <div class="buttonRow" style="margin-bottom: 0;">
+            <button id="curveLineBtn" class="curveBtn active">Straight</button>
+            <button id="curveQuadBtn" class="curveBtn">Smooth</button>
+            <button id="curveCubicBtn" class="curveBtn">Complex</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Color</h2>
+        <div class="colorRow">
+          <span id="colorPreview" title="Click to choose a colour"></span>
+          <input type="color" id="colorPicker" value="#000000">
+          <span id="colorValue">#000000</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>View</h2>
+        <div class="buttonRow zoomButtons">
+          <button id="zoomOutBtn">-</button>
+          <button id="zoomResetBtn">100%</button>
+          <button id="zoomInBtn">+</button>
+        </div>
+        <div class="buttonRow" style="margin-bottom: 0.35rem;">
+          <button id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+          <button id="redoBtn" title="Redo (Ctrl+Y / Ctrl+Shift+Z)">Redo</button>
+        </div>
+        <input type="range" id="zoomRange" min="0.25" max="4" step="0.05" value="1">
+        <p id="zoomLabel">Zoom: 100%</p>
+        <button id="darkModeBtn">Enable Dark Mode</button>
+      </section>
+
+      <section class="panel">
+        <h2>Vector Layers</h2>
+        <div class="buttonRow">
+          <button id="addLayerBtn">Add Layer</button>
+          <button id="toggleSvgBtn">Hide SVG</button>
+        </div>
+        <ul id="layersList"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Export</h2>
+        <button id="exportBtn">Export SVG</button>
+      </section>
+    </aside>
+
+    <main id="workspace">
+      <div id="canvasViewport">
+        <div id="canvasWrapper">
+          <canvas id="imageCanvas" width="800" height="600"></canvas>
+          <svg id="svgOverlay" width="800" height="600"></svg>
+        </div>
+      </div>
+      <p id="hint">Trace mode: click to add points. Click near the first point to close polygon.</p>
+    </main>
+  </div>
+  <div id="helpOverlay" class="helpOverlay" style="display:none;" aria-modal="true" role="dialog">
+    <div class="helpDialog">
+      <div class="helpHeader">
+        <span>Keyboard Shortcuts</span>
+        <button id="helpCloseBtn" title="Close">✕</button>
+      </div>
+      <div class="helpBody">
+        <table class="keybindTable">
+          <tbody>
+            <tr><th colspan="2">General</th></tr>
+            <tr><td><kbd>?</kbd></td><td>Show / hide this help</td></tr>
+            <tr><td><kbd>Ctrl Z</kbd></td><td>Undo</td></tr>
+            <tr><td><kbd>Ctrl Y</kbd> / <kbd>Ctrl ⇧ Z</kbd></td><td>Redo</td></tr>
+            <tr><td><kbd>Escape</kbd></td><td>Cancel trace / exit edit mode</td></tr>
+            <tr><td><kbd>Delete</kbd></td><td>Delete selected / editing polygon</td></tr>
+            <tr class="separator"><th colspan="2">View &amp; Navigation</th></tr>
+            <tr><td><kbd>Scroll</kbd></td><td>Zoom in / out toward cursor</td></tr>
+            <tr><td><kbd>Space</kbd> + drag</td><td>Pan canvas</td></tr>
+            <tr><td><kbd>Middle mouse</kbd> drag</td><td>Pan canvas</td></tr>
+            <tr class="separator"><th colspan="2">Tracing</th></tr>
+            <tr><td>Left-click canvas</td><td>Add point</td></tr>
+            <tr><td>Click near start</td><td>Close &amp; finish polygon</td></tr>
+            <tr class="separator"><th colspan="2">Editing</th></tr>
+            <tr><td>Left-click polygon</td><td>Select polygon</td></tr>
+            <tr><td>Right-click polygon</td><td>Enter edit mode (must select first)</td></tr>
+            <tr><td>Right-click again</td><td>Exit edit mode</td></tr>
+            <tr><td><kbd>H</kbd> (in edit mode)</td><td>Toggle handles visibility</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
