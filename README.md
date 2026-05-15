@@ -50,16 +50,6 @@ python3 -m http.server 8000
 
 Then open `http://localhost:8000`.
 
-## GitHub Pages
-
-This repository includes a GitHub Actions workflow that deploys the static site to GitHub Pages.
-
-After merging to `main`:
-
-1. Go to **Settings → Pages** in GitHub.
-2. Set **Source** to **GitHub Actions**.
-3. The `Deploy to GitHub Pages` workflow will publish the site automatically on pushes to `main` or when run manually.
-
 ## Project structure
 
 - `index.html` — app layout
