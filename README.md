@@ -1,4 +1,4 @@
-# Image Tracer
+# [Image Tracer](https://remagofficial.github.io/image-tracer/)
 
 Image Tracer is a small browser-based tracing tool for turning raster images into simple SVG artwork. Upload an image, trace shapes on top of it, organize the result into layers, and export the finished vector overlay as an `.svg` file.
 
