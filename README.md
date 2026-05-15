@@ -38,7 +38,7 @@ This project is a static web app with no build step.
 
 ### Option 1: open the file directly
 
-Open `/home/runner/work/image-tracer/image-tracer/index.html` in a browser.
+Open `index.html` in a browser.
 
 ### Option 2: serve it locally
 
@@ -62,6 +62,6 @@ After merging to `main`:
 
 ## Project structure
 
-- `/home/runner/work/image-tracer/image-tracer/index.html` — app layout
-- `/home/runner/work/image-tracer/image-tracer/style.css` — app styling
-- `/home/runner/work/image-tracer/image-tracer/app.js` — tracing, editing, layers, and export logic
+- `index.html` — app layout
+- `style.css` — app styling
+- `app.js` — tracing, editing, layers, and export logic
