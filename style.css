@@ -350,6 +350,10 @@ button:active {
 	margin-bottom: 0.4rem;
 }
 
+.booleanRow {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .zoomButtons {
 	margin-bottom: 0.35rem;
 }
@@ -521,6 +525,17 @@ button:active {
 #svgOverlay text.selectedPolygon {
 	stroke: var(--accent);
 	stroke-width: 2;
+}
+
+#svgOverlay path.selectedPrimary,
+#svgOverlay rect.selectedPrimary,
+#svgOverlay ellipse.selectedPrimary,
+#svgOverlay circle.selectedPrimary,
+#svgOverlay polygon.selectedPrimary,
+#svgOverlay text.selectedPrimary {
+	stroke: var(--accent-2);
+	stroke-width: 2.2;
+	stroke-dasharray: 6 4;
 }
 
 #svgOverlay path.editingPolygon,

@@ -42,6 +42,16 @@
       </section>
 
       <section class="panel">
+        <h2>Boolean</h2>
+        <p style="margin: 0 0 0.4rem; font-size: 0.82rem; color: var(--muted);">Select 2+ closed shapes after drawing (can be across layers). For Subtract, first selected shape is the base.</p>
+        <div class="buttonRow booleanRow" style="margin-bottom: 0;">
+          <button id="booleanUnionBtn">Union</button>
+          <button id="booleanIntersectBtn">Intersect</button>
+          <button id="booleanSubtractBtn">Subtract</button>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Color</h2>
         <div class="colorRow">
           <span id="colorPreview" title="Click to choose a colour"></span>
@@ -114,6 +124,10 @@
 
       <section class="panel">
         <h2>Export</h2>
+        <label class="simpleCheck">
+          <input id="optimizeExportPathsCheck" type="checkbox" checked>
+          <span>Flatten + simplify paths on export</span>
+        </label>
         <label class="simpleCheck" style="display: flex; align-items: center; gap: 0.5em;">
           <input id="convertTextToPathsCheck" type="checkbox">
           <span>Convert text to paths</span>
@@ -148,6 +162,7 @@
             <tr><td><kbd>Ctrl Y</kbd> / <kbd>Ctrl &#x21E7; Z</kbd></td><td>Redo</td></tr>
             <tr><td><kbd>Escape</kbd></td><td>Cancel current trace/shape / exit edit mode</td></tr>
             <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete selected / editing shape</td></tr>
+            <tr><td><kbd>Shift/Ctrl/Cmd</kbd> + click shape</td><td>Multi-select shapes</td></tr>
             <tr class="separator"><th colspan="2">View &amp; Navigation</th></tr>
             <tr><td><kbd>Scroll</kbd></td><td>Zoom in / out toward cursor</td></tr>
             <tr><td><kbd>Space</kbd> + drag</td><td>Pan canvas</td></tr>
@@ -161,12 +176,18 @@
             <tr><td>Left-click polygon</td><td>Select polygon</td></tr>
             <tr><td>Right-click polygon</td><td>Enter edit mode (must select first)</td></tr>
             <tr><td>Right-click again</td><td>Exit edit mode</td></tr>
+            <tr><td>Center handle (green)</td><td>Move selected shape/text in edit mode</td></tr>
+            <tr><td>Text corner handles</td><td>Scale text from its bounding box in edit mode</td></tr>
             <tr><td><kbd>H</kbd> (in edit mode)</td><td>Toggle handles visibility</td></tr>
           </tbody>
         </table>
           <div style="margin-top:1.2em; font-size:1em; color:var(--muted);">
             <strong>Export panel tips:</strong>
             <ul style="margin:0.5em 0 0 1.2em; padding:0;">
+              <li>Use the <b>Boolean</b> panel to run <b>Union</b>, <b>Intersect</b>, or <b>Subtract</b> on selected closed shapes (including across different layers).</li>
+              <li>For <b>Subtract</b>, selection order matters: the <b>first selected shape</b> is kept as the base, and later selections are subtracted from it.</li>
+              <li>The boolean result is created on the same layer as the first selected shape.</li>
+              <li><b>Flatten + simplify paths on export</b> is enabled by default to produce cleaner SVG path output; disable it if you need exact original path geometry.</li>
               <li>Enable <b>Convert text to paths</b> to turn all text into SVG paths for maximum compatibility.</li>
               <li><b>Warning:</b> Converting text to paths may make the SVG file <b>very large</b>, especially for long or multi-line text.</li>
               <li>To convert text, you must load the matching font file (TTF/OTF/WOFF) using the font file input. System/browser fonts cannot be converted unless you provide the font file.</li>
@@ -177,6 +198,7 @@
     </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/paper@0.12.18/dist/paper-full.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

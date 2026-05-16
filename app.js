@@ -40,6 +40,7 @@ const textInput = document.getElementById('textInput');
 const textFontSelect = document.getElementById('textFontSelect');
 const textSizeInput = document.getElementById('textSizeInput');
 const fontFileInput = document.getElementById('fontFileInput');
+const optimizeExportPathsCheck = document.getElementById('optimizeExportPathsCheck');
 const convertTextToPathsCheck = document.getElementById('convertTextToPathsCheck');
 const fillTypeSolidBtn = document.getElementById('fillTypeSolidBtn');
 const fillTypeLinearBtn = document.getElementById('fillTypeLinearBtn');
@@ -53,6 +54,9 @@ const strokeEnabledCheck = document.getElementById('strokeEnabledCheck');
 const strokeColorPreview = document.getElementById('strokeColorPreview');
 const strokeColorPicker = document.getElementById('strokeColorPicker');
 const strokeWidthInput = document.getElementById('strokeWidthInput');
+const booleanUnionBtn = document.getElementById('booleanUnionBtn');
+const booleanIntersectBtn = document.getElementById('booleanIntersectBtn');
+const booleanSubtractBtn = document.getElementById('booleanSubtractBtn');
 
 const ctx = imageCanvas.getContext('2d');
 const svgNS = 'http://www.w3.org/2000/svg';
@@ -101,6 +105,7 @@ let panStartPanY = 0;
 let spaceHeld = false;
 let editingPath = null;
 let selectedPath = null;
+let selectedPaths = [];
 let editHandles = [];
 let handlesVisible = true;
 
@@ -353,11 +358,58 @@ function setDarkMode(enabled) {
   darkModeBtn.textContent = enabled ? 'Disable Dark Mode' : 'Enable Dark Mode';
 }
 
+function updateSelectedPathClasses() {
+  selectedPaths.forEach((shape, idx) => {
+    shape.classList.add('selectedPolygon');
+    shape.classList.toggle('selectedPrimary', idx === 0);
+  });
+}
+
+function clearSelectedPaths() {
+  selectedPaths.forEach((shape) => {
+    shape.classList.remove('selectedPolygon');
+    shape.classList.remove('selectedPrimary');
+  });
+  selectedPaths = [];
+  selectedPath = null;
+}
+
 function setSelectedPath(path) {
-  if (selectedPath === path) return;
-  if (selectedPath) selectedPath.classList.remove('selectedPolygon');
-  selectedPath = path || null;
-  if (selectedPath) selectedPath.classList.add('selectedPolygon');
+  if (selectedPaths.length === 1 && selectedPaths[0] === path) return;
+  clearSelectedPaths();
+  if (path) {
+    selectedPaths = [path];
+    selectedPath = path;
+    updateSelectedPathClasses();
+  }
+}
+
+function addPathToSelection(path) {
+  if (!path) return;
+  if (selectedPaths.includes(path)) return;
+  selectedPaths.push(path);
+  selectedPath = selectedPaths[0] || null;
+  updateSelectedPathClasses();
+}
+
+function removePathFromSelection(path) {
+  if (!path) return;
+  const idx = selectedPaths.indexOf(path);
+  if (idx === -1) return;
+  path.classList.remove('selectedPolygon');
+  path.classList.remove('selectedPrimary');
+  selectedPaths.splice(idx, 1);
+  selectedPath = selectedPaths[0] || null;
+  updateSelectedPathClasses();
+}
+
+function togglePathSelection(path) {
+  if (!path) return;
+  if (selectedPaths.includes(path)) {
+    removePathFromSelection(path);
+  } else {
+    addPathToSelection(path);
+  }
 }
 
 function getLayerForPath(path) {
@@ -381,6 +433,85 @@ function getShapeFill(shape, attr) {
     try { return { gradient: JSON.parse(gradJSON) }; } catch (_) { /* ignore */ }
   }
   return { color: shape.getAttribute(attr) || '#000000' };
+}
+
+function readBooleanMetadata(shape) {
+  if (!shape) return {};
+  const op = shape.getAttribute('data-boolean-op');
+  const src = shape.getAttribute('data-boolean-source');
+  const meta = {};
+  if (op) meta.booleanOp = op;
+  if (src) meta.booleanSource = src;
+  return meta;
+}
+
+function writeBooleanMetadata(shape, meta) {
+  if (!shape || !meta) return;
+  if (meta.booleanOp) shape.setAttribute('data-boolean-op', meta.booleanOp);
+  if (meta.booleanSource) shape.setAttribute('data-boolean-source', meta.booleanSource);
+}
+
+function snapshotShapeForBoolean(shape) {
+  if (!shape) return null;
+  const type = shape.tagName.toLowerCase();
+  const base = {
+    type,
+    fill: shape.getAttribute('fill') || 'none',
+    stroke: shape.getAttribute('stroke') || 'none',
+    strokeWidth: shape.getAttribute('stroke-width') || '1'
+  };
+
+  if (shape.hasAttribute('data-gradient')) {
+    base.gradient = shape.getAttribute('data-gradient');
+  }
+
+  if (type === 'rect') {
+    base.x = shape.getAttribute('x') || '0';
+    base.y = shape.getAttribute('y') || '0';
+    base.width = shape.getAttribute('width') || '0';
+    base.height = shape.getAttribute('height') || '0';
+    return base;
+  }
+  if (type === 'ellipse') {
+    base.cx = shape.getAttribute('cx') || '0';
+    base.cy = shape.getAttribute('cy') || '0';
+    base.rx = shape.getAttribute('rx') || '0';
+    base.ry = shape.getAttribute('ry') || '0';
+    return base;
+  }
+  if (type === 'circle') {
+    base.cx = shape.getAttribute('cx') || '0';
+    base.cy = shape.getAttribute('cy') || '0';
+    base.r = shape.getAttribute('r') || '0';
+    return base;
+  }
+  if (type === 'line') {
+    base.x1 = shape.getAttribute('x1') || '0';
+    base.y1 = shape.getAttribute('y1') || '0';
+    base.x2 = shape.getAttribute('x2') || '0';
+    base.y2 = shape.getAttribute('y2') || '0';
+    return base;
+  }
+  if (type === 'polyline' || type === 'polygon') {
+    base.points = shape.getAttribute('points') || '';
+    return base;
+  }
+  if (type === 'text') {
+    base.content = shape.textContent || '';
+    base.x = shape.getAttribute('x') || '0';
+    base.y = shape.getAttribute('y') || '0';
+    base.fontFamily = shape.getAttribute('font-family') || 'Arial';
+    base.fontSize = shape.getAttribute('font-size') || '48';
+    base.fontWeight = shape.getAttribute('font-weight') || '400';
+    base.fontStyle = shape.getAttribute('font-style') || 'normal';
+    return base;
+  }
+
+  base.d = shape.getAttribute('d') || '';
+  if (shape.hasAttribute('data-points')) base.dataPoints = shape.getAttribute('data-points');
+  if (shape.hasAttribute('data-curve-types')) base.dataCurveTypes = shape.getAttribute('data-curve-types');
+  if (shape.hasAttribute('data-controls')) base.dataControls = shape.getAttribute('data-controls');
+  return base;
 }
 
 function serializeState() {
@@ -474,14 +605,29 @@ function serializeState() {
             strokeWidth: Number.parseFloat(shape.getAttribute('stroke-width') || '1')
           };
         }
+        const hasEditablePoints = shape.hasAttribute('data-points');
+        if (hasEditablePoints) {
+          return {
+            type: 'path',
+            pathKind: 'editable',
+            points: JSON.parse(shape.getAttribute('data-points') || '[]'),
+            curveTypes: JSON.parse(shape.getAttribute('data-curve-types') || '[]'),
+            controls: JSON.parse(shape.getAttribute('data-controls') || '[]'),
+            ...getShapeFill(shape, 'fill'),
+            stroke: shape.getAttribute('stroke') || 'none',
+            strokeWidth: Number.parseFloat(shape.getAttribute('stroke-width') || '1'),
+            ...readBooleanMetadata(shape)
+          };
+        }
+
         return {
           type: 'path',
-          points: JSON.parse(shape.getAttribute('data-points') || '[]'),
-          curveTypes: JSON.parse(shape.getAttribute('data-curve-types') || '[]'),
-          controls: JSON.parse(shape.getAttribute('data-controls') || '[]'),
+          pathKind: 'raw',
+          pathData: shape.getAttribute('d') || '',
           ...getShapeFill(shape, 'fill'),
           stroke: shape.getAttribute('stroke') || 'none',
-          strokeWidth: Number.parseFloat(shape.getAttribute('stroke-width') || '1')
+          strokeWidth: Number.parseFloat(shape.getAttribute('stroke-width') || '1'),
+          ...readBooleanMetadata(shape)
         };
       })
     }))
@@ -506,6 +652,17 @@ function createPathElement(points, curveTypes, controls, color) {
   path.setAttribute('data-controls', JSON.stringify(safeControls));
   applyFill(path, color);
   applyStrokeToShape(path);
+  bindPathInteractions(path);
+  return path;
+}
+
+function createRawPathElement(pathData, color, metadata) {
+  const path = document.createElementNS(svgNS, 'path');
+  path.setAttribute('d', String(pathData || ''));
+  path.style.cursor = 'pointer';
+  applyFill(path, color);
+  applyStrokeToShape(path);
+  writeBooleanMetadata(path, metadata);
   bindPathInteractions(path);
   return path;
 }
@@ -688,12 +845,27 @@ function restoreState(state) {
           polygon.fontStyle || 'normal'
         );
       } else {
-        shape = createPathElement(
-          polygon.points || [],
-          polygon.curveTypes || [],
-          polygon.controls || [],
-          fill
-        );
+        if (polygon.pathKind === 'raw' || typeof polygon.pathData === 'string') {
+          shape = createRawPathElement(
+            polygon.pathData || '',
+            fill,
+            {
+              booleanOp: polygon.booleanOp,
+              booleanSource: polygon.booleanSource
+            }
+          );
+        } else {
+          shape = createPathElement(
+            polygon.points || [],
+            polygon.curveTypes || [],
+            polygon.controls || [],
+            fill
+          );
+          writeBooleanMetadata(shape, {
+            booleanOp: polygon.booleanOp,
+            booleanSource: polygon.booleanSource
+          });
+        }
       }
 
       restoreStroke(shape, polygon);
@@ -739,8 +911,20 @@ function removePolygon(path, recordHistory = true) {
   if (!path) return;
   if (recordHistory) pushHistoryState();
   if (editingPath === path) exitEditMode();
-  if (selectedPath === path) setSelectedPath(null);
+  if (selectedPaths.includes(path)) removePathFromSelection(path);
   path.remove();
+  renderLayersList();
+}
+
+function removePolygons(paths, recordHistory = true) {
+  const uniquePaths = Array.from(new Set((paths || []).filter(Boolean)));
+  if (uniquePaths.length === 0) return;
+  if (recordHistory) pushHistoryState();
+  uniquePaths.forEach((shape) => {
+    if (editingPath === shape) exitEditMode();
+    if (selectedPaths.includes(shape)) removePathFromSelection(shape);
+    shape.remove();
+  });
   renderLayersList();
 }
 
@@ -1057,6 +1241,230 @@ function updateShapeCornerHandles(path) {
     handle.element.setAttribute('width', String(controlSize));
     handle.element.setAttribute('height', String(controlSize));
   });
+
+  const centerX = (box.left + box.right) / 2;
+  const centerY = (box.top + box.bottom) / 2;
+  editHandles.forEach((handle) => {
+    if (handle.data.type !== 'shape-move') return;
+    const moveRadius = 10 / zoomLevel;
+    handle.element.setAttribute('cx', String(centerX));
+    handle.element.setAttribute('cy', String(centerY));
+    handle.element.setAttribute('r', String(moveRadius));
+  });
+}
+
+function updatePolylineLikeHandles(path) {
+  if (!path) return;
+  const shapeType = path.tagName.toLowerCase();
+  if (!['line', 'polyline', 'polygon'].includes(shapeType)) return;
+
+  const pointRadius = 10 / zoomLevel;
+  let points = [];
+  if (shapeType === 'line') {
+    points = [
+      [Number.parseFloat(path.getAttribute('x1') || '0'), Number.parseFloat(path.getAttribute('y1') || '0')],
+      [Number.parseFloat(path.getAttribute('x2') || '0'), Number.parseFloat(path.getAttribute('y2') || '0')]
+    ];
+  } else {
+    points = parsePointsAttribute(path.getAttribute('points'));
+  }
+
+  editHandles.forEach((handle) => {
+    if (handle.data.type === 'shape-point') {
+      const pt = points[handle.data.pointIdx];
+      if (!pt) return;
+      handle.element.setAttribute('cx', String(pt[0]));
+      handle.element.setAttribute('cy', String(pt[1]));
+      handle.element.setAttribute('r', String(pointRadius));
+    }
+  });
+
+  if (points.length === 0) return;
+  const cx = points.reduce((sum, pt) => sum + pt[0], 0) / points.length;
+  const cy = points.reduce((sum, pt) => sum + pt[1], 0) / points.length;
+  editHandles.forEach((handle) => {
+    if (handle.data.type !== 'shape-move') return;
+    handle.element.setAttribute('cx', String(cx));
+    handle.element.setAttribute('cy', String(cy));
+    handle.element.setAttribute('r', String(pointRadius));
+  });
+}
+
+function updatePathHandles(path) {
+  if (!path || path.tagName.toLowerCase() !== 'path') return;
+  const points = JSON.parse(path.getAttribute('data-points') || '[]');
+  const controls = JSON.parse(path.getAttribute('data-controls') || '[]') || [];
+  const pointRadius = 10 / zoomLevel;
+  const controlSize = 12 / zoomLevel;
+  const halfControlSize = controlSize / 2;
+
+  editHandles.forEach((handle) => {
+    if (handle.data.type === 'point') {
+      const pt = points[handle.data.pointIdx];
+      if (!pt) return;
+      handle.element.setAttribute('cx', String(pt[0]));
+      handle.element.setAttribute('cy', String(pt[1]));
+      handle.element.setAttribute('r', String(pointRadius));
+    }
+    if (handle.data.type === 'control') {
+      const ctrl = controls[handle.data.pointIdx];
+      if (!ctrl) return;
+      let cp = null;
+      if (handle.data.controlType === 'cp') cp = ctrl.cp;
+      if (handle.data.controlType === 'cp1') cp = ctrl.cp1;
+      if (handle.data.controlType === 'cp2') cp = ctrl.cp2;
+      if (!cp) return;
+      handle.element.setAttribute('x', String(cp.x - halfControlSize));
+      handle.element.setAttribute('y', String(cp.y - halfControlSize));
+      handle.element.setAttribute('width', String(controlSize));
+      handle.element.setAttribute('height', String(controlSize));
+    }
+  });
+
+  if (points.length === 0) return;
+  const cx = points.reduce((sum, pt) => sum + pt[0], 0) / points.length;
+  const cy = points.reduce((sum, pt) => sum + pt[1], 0) / points.length;
+  editHandles.forEach((handle) => {
+    if (handle.data.type !== 'shape-move') return;
+    handle.element.setAttribute('cx', String(cx));
+    handle.element.setAttribute('cy', String(cy));
+    handle.element.setAttribute('r', String(pointRadius));
+  });
+}
+
+function getTextBounds(path) {
+  try {
+    const box = path.getBBox();
+    return {
+      left: box.x,
+      top: box.y,
+      right: box.x + box.width,
+      bottom: box.y + box.height,
+      width: box.width,
+      height: box.height
+    };
+  } catch (_) {
+    const x = Number.parseFloat(path.getAttribute('x') || '0');
+    const y = Number.parseFloat(path.getAttribute('y') || '0');
+    const size = Number.parseFloat(path.getAttribute('font-size') || '48') || 48;
+    const width = Math.max(1, (path.textContent || '').length * size * 0.6);
+    return {
+      left: x,
+      top: y - size,
+      right: x + width,
+      bottom: y,
+      width,
+      height: size
+    };
+  }
+}
+
+function updateTextHandles(path) {
+  if (!path || path.tagName.toLowerCase() !== 'text') return;
+  const box = getTextBounds(path);
+  const controlSize = 12 / zoomLevel;
+  const halfControlSize = controlSize / 2;
+  const moveRadius = 10 / zoomLevel;
+
+  const corners = [
+    [box.left, box.top],
+    [box.right, box.top],
+    [box.right, box.bottom],
+    [box.left, box.bottom]
+  ];
+
+  editHandles.forEach((handle) => {
+    if (handle.data.type === 'text-bbox-corner') {
+      const cornerPt = corners[handle.data.corner];
+      if (!cornerPt) return;
+      handle.element.setAttribute('x', String(cornerPt[0] - halfControlSize));
+      handle.element.setAttribute('y', String(cornerPt[1] - halfControlSize));
+      handle.element.setAttribute('width', String(controlSize));
+      handle.element.setAttribute('height', String(controlSize));
+    }
+    if (handle.data.type === 'text-move') {
+      handle.element.setAttribute('cx', String((box.left + box.right) / 2));
+      handle.element.setAttribute('cy', String((box.top + box.bottom) / 2));
+      handle.element.setAttribute('r', String(moveRadius));
+    }
+  });
+}
+
+function getPathBounds(path) {
+  if (!path || path.tagName.toLowerCase() !== 'path') return null;
+  try {
+    const box = path.getBBox();
+    return {
+      left: box.x,
+      top: box.y,
+      right: box.x + box.width,
+      bottom: box.y + box.height,
+      width: box.width,
+      height: box.height
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function transformPathDataWithPaper(pathData, transformer) {
+  if (!window.paper || !window.paper.PaperScope) return null;
+  const scope = new window.paper.PaperScope();
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(baseCanvasWidth));
+  canvas.height = Math.max(1, Math.round(baseCanvasHeight));
+  scope.setup(canvas);
+
+  let shape = null;
+  try {
+    shape = new scope.CompoundPath(pathData);
+  } catch (_) {
+    try {
+      shape = new scope.Path(pathData);
+    } catch (_) {
+      scope.project.clear();
+      return null;
+    }
+  }
+
+  transformer(shape, scope);
+  const result = String(shape.pathData || '').trim();
+  shape.remove();
+  scope.project.clear();
+  return result || null;
+}
+
+function updateGenericPathTransformHandles(path) {
+  if (!path || path.tagName.toLowerCase() !== 'path') return;
+  if (path.hasAttribute('data-points')) return;
+  const box = getPathBounds(path);
+  if (!box) return;
+
+  const controlSize = 12 / zoomLevel;
+  const halfControlSize = controlSize / 2;
+  const moveRadius = 10 / zoomLevel;
+  const corners = [
+    [box.left, box.top],
+    [box.right, box.top],
+    [box.right, box.bottom],
+    [box.left, box.bottom]
+  ];
+
+  editHandles.forEach((handle) => {
+    if (handle.data.type === 'path-bbox-corner') {
+      const cornerPt = corners[handle.data.corner];
+      if (!cornerPt) return;
+      handle.element.setAttribute('x', String(cornerPt[0] - halfControlSize));
+      handle.element.setAttribute('y', String(cornerPt[1] - halfControlSize));
+      handle.element.setAttribute('width', String(controlSize));
+      handle.element.setAttribute('height', String(controlSize));
+    }
+    if (handle.data.type === 'shape-move') {
+      handle.element.setAttribute('cx', String((box.left + box.right) / 2));
+      handle.element.setAttribute('cy', String((box.top + box.bottom) / 2));
+      handle.element.setAttribute('r', String(moveRadius));
+    }
+  });
 }
 
 function handleEditDrag(e) {
@@ -1069,19 +1477,103 @@ function handleEditDrag(e) {
   const y = (e.clientY - rect.top - panY) / zoomLevel;
   const shapeType = editingPath.tagName.toLowerCase();
 
+  if (shapeType === 'path' && !editingPath.hasAttribute('data-points')) {
+    if (currentDrag.data.type === 'shape-move') {
+      const start = currentDrag.data.start;
+      if (!start) return;
+      const dx = x - start.pointerX;
+      const dy = y - start.pointerY;
+      const movedData = transformPathDataWithPaper(start.pathData, (shape, scope) => {
+        shape.translate(new scope.Point(dx, dy));
+      });
+      if (!movedData) return;
+      editingPath.setAttribute('d', movedData);
+      updateGenericPathTransformHandles(editingPath);
+      return;
+    }
+
+    if (currentDrag.data.type === 'path-bbox-corner') {
+      const start = currentDrag.data.start;
+      if (!start || !start.anchor || !start.box) return;
+
+      const cornerIdx = Number.isInteger(currentDrag.data.corner) ? currentDrag.data.corner : 0;
+      const startCorners = [
+        [start.box.left, start.box.top],
+        [start.box.right, start.box.top],
+        [start.box.right, start.box.bottom],
+        [start.box.left, start.box.bottom]
+      ];
+      const startCorner = startCorners[cornerIdx];
+      if (!startCorner) return;
+
+      const startDx = startCorner[0] - start.anchor.x;
+      const startDy = startCorner[1] - start.anchor.y;
+      if (Math.abs(startDx) < 1e-6 || Math.abs(startDy) < 1e-6) return;
+
+      // Keep signed scale so dragging past the anchor mirrors/flips the path.
+      const sx = (x - start.anchor.x) / startDx;
+      const sy = (y - start.anchor.y) / startDy;
+      if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+
+      const scaledData = transformPathDataWithPaper(start.pathData, (shape, scope) => {
+        shape.scale(sx, sy, new scope.Point(start.anchor.x, start.anchor.y));
+      });
+      if (!scaledData) return;
+      editingPath.setAttribute('d', scaledData);
+      updateGenericPathTransformHandles(editingPath);
+      return;
+    }
+
+    return;
+  }
+
   if (shapeType === 'text') {
-    if (currentDrag.data.type !== 'text-anchor') return;
-    editingPath.setAttribute('x', String(x));
-    editingPath.setAttribute('y', String(y));
-    currentDrag.element.setAttribute('cx', String(x));
-    currentDrag.element.setAttribute('cy', String(y));
+    if (currentDrag.data.type === 'text-move') {
+      const start = currentDrag.data.start;
+      if (!start) return;
+      const dx = x - start.pointerX;
+      const dy = y - start.pointerY;
+      editingPath.setAttribute('x', String(start.textX + dx));
+      editingPath.setAttribute('y', String(start.textY + dy));
+      updateTextHandles(editingPath);
+    } else if (currentDrag.data.type === 'text-bbox-corner') {
+      const start = currentDrag.data.start;
+      if (!start) return;
+
+      let newDragX = x;
+      let newDragY = y;
+      const anchor = start.anchor;
+      if (!anchor) return;
+
+      const newLeft = Math.min(newDragX, anchor.x);
+      const newRight = Math.max(newDragX, anchor.x);
+      const newTop = Math.min(newDragY, anchor.y);
+      const newBottom = Math.max(newDragY, anchor.y);
+      const newWidth = Math.max(1, newRight - newLeft);
+      const newHeight = Math.max(1, newBottom - newTop);
+
+      const widthScale = newWidth / Math.max(1, start.box.width);
+      const heightScale = newHeight / Math.max(1, start.box.height);
+      const scale = Math.max(0.05, Math.max(widthScale, heightScale));
+
+      const newFontSize = Math.max(6, start.fontSize * scale);
+      editingPath.setAttribute('font-size', String(newFontSize));
+
+      const startCenterX = (start.box.left + start.box.right) / 2;
+      const startCenterY = (start.box.top + start.box.bottom) / 2;
+      const targetCenterX = (newLeft + newRight) / 2;
+      const targetCenterY = (newTop + newBottom) / 2;
+      const centerDx = targetCenterX - startCenterX;
+      const centerDy = targetCenterY - startCenterY;
+
+      editingPath.setAttribute('x', String(start.textX + centerDx));
+      editingPath.setAttribute('y', String(start.textY + centerDy));
+      updateTextHandles(editingPath);
+    }
     return;
   }
 
   if (shapeType === 'line' || shapeType === 'polyline' || shapeType === 'polygon') {
-    if (currentDrag.data.type !== 'shape-point') return;
-
-    const pointIdx = currentDrag.data.pointIdx;
     let points = [];
     if (shapeType === 'line') {
       points = [
@@ -1089,15 +1581,22 @@ function handleEditDrag(e) {
         [Number.parseFloat(editingPath.getAttribute('x2') || '0'), Number.parseFloat(editingPath.getAttribute('y2') || '0')]
       ];
     } else {
-      points = (editingPath.getAttribute('points') || '')
-        .trim()
-        .split(/\s+/)
-        .map((pair) => pair.split(',').map((n) => Number.parseFloat(n)))
-        .filter((pair) => pair.length === 2 && Number.isFinite(pair[0]) && Number.isFinite(pair[1]));
+      points = parsePointsAttribute(editingPath.getAttribute('points'));
     }
 
-    if (pointIdx < 0 || pointIdx >= points.length) return;
-    points[pointIdx] = [x, y];
+    if (currentDrag.data.type === 'shape-point') {
+      const pointIdx = currentDrag.data.pointIdx;
+      if (pointIdx < 0 || pointIdx >= points.length) return;
+      points[pointIdx] = [x, y];
+    } else if (currentDrag.data.type === 'shape-move') {
+      const start = currentDrag.data.start;
+      if (!start) return;
+      const dx = x - start.pointerX;
+      const dy = y - start.pointerY;
+      points = start.points.map((pt) => [pt[0] + dx, pt[1] + dy]);
+    } else {
+      return;
+    }
 
     if (shapeType === 'line') {
       editingPath.setAttribute('x1', String(points[0][0]));
@@ -1108,12 +1607,32 @@ function handleEditDrag(e) {
       editingPath.setAttribute('points', points.map(([px, py]) => `${px},${py}`).join(' '));
     }
 
-    currentDrag.element.setAttribute('cx', String(x));
-    currentDrag.element.setAttribute('cy', String(y));
+    updatePolylineLikeHandles(editingPath);
     return;
   }
 
   if (shapeType === 'rect' || shapeType === 'ellipse' || shapeType === 'circle') {
+    if (currentDrag.data.type === 'shape-move') {
+      const start = currentDrag.data.start;
+      if (!start) return;
+      const dx = x - start.pointerX;
+      const dy = y - start.pointerY;
+
+      if (shapeType === 'rect') {
+        editingPath.setAttribute('x', String(start.rect.x + dx));
+        editingPath.setAttribute('y', String(start.rect.y + dy));
+      } else if (shapeType === 'ellipse') {
+        editingPath.setAttribute('cx', String(start.ellipse.cx + dx));
+        editingPath.setAttribute('cy', String(start.ellipse.cy + dy));
+      } else {
+        editingPath.setAttribute('cx', String(start.circle.cx + dx));
+        editingPath.setAttribute('cy', String(start.circle.cy + dy));
+      }
+
+      updateShapeCornerHandles(editingPath);
+      return;
+    }
+
     if (currentDrag.data.type !== 'bbox-corner') return;
 
     const corner = currentDrag.data.corner;
@@ -1188,7 +1707,21 @@ function handleEditDrag(e) {
   let curveTypes = JSON.parse(editingPath.getAttribute('data-curve-types'));
   let controls = JSON.parse(editingPath.getAttribute('data-controls'));
   
-  if (type === 'point') {
+  if (type === 'shape-move') {
+    const start = currentDrag.data.start;
+    if (!start) return;
+    const dx = x - start.pointerX;
+    const dy = y - start.pointerY;
+    points = start.points.map((pt) => [pt[0] + dx, pt[1] + dy]);
+    controls = (start.controls || []).map((ctrl) => {
+      if (!ctrl) return ctrl;
+      const next = { ...ctrl };
+      if (next.cp) next.cp = { x: next.cp.x + dx, y: next.cp.y + dy };
+      if (next.cp1) next.cp1 = { x: next.cp1.x + dx, y: next.cp1.y + dy };
+      if (next.cp2) next.cp2 = { x: next.cp2.x + dx, y: next.cp2.y + dy };
+      return next;
+    });
+  } else if (type === 'point') {
     points[pointIdx] = [x, y];
   } else if (type === 'control') {
     if (!controls[pointIdx]) controls[pointIdx] = {};
@@ -1205,27 +1738,19 @@ function handleEditDrag(e) {
   editingPath.setAttribute('data-controls', JSON.stringify(controls));
   const pathData = buildPathData(points, curveTypes, controls, true);
   editingPath.setAttribute('d', pathData);
-
-  if (type === 'point') {
-    currentDrag.element.setAttribute('cx', String(x));
-    currentDrag.element.setAttribute('cy', String(y));
-  } else {
-    const controlSize = 12 / zoomLevel;
-    const halfControlSize = controlSize / 2;
-    currentDrag.element.setAttribute('x', String(x - halfControlSize));
-    currentDrag.element.setAttribute('y', String(y - halfControlSize));
-    currentDrag.element.setAttribute('width', String(controlSize));
-    currentDrag.element.setAttribute('height', String(controlSize));
-  }
+  updatePathHandles(editingPath);
 }
 
 function handleEditEnd(e) {
   if (!editingPath) return;
   editHandles.forEach((h) => {
     h.isDragging = false;
-    if (h.data && h.data.type === 'bbox-corner') {
-      delete h.data.anchor;
-    }
+    if (!h.data) return;
+    if (h.data.type === 'bbox-corner') delete h.data.anchor;
+    if (h.data.type === 'path-bbox-corner') delete h.data.start;
+    if (h.data.type === 'shape-move') delete h.data.start;
+    if (h.data.type === 'text-bbox-corner') delete h.data.start;
+    if (h.data.type === 'text-move') delete h.data.start;
   });
 }
 
@@ -1236,31 +1761,81 @@ function renderEditHandles(path) {
 
   const shapeType = path.tagName.toLowerCase();
   if (shapeType === 'text') {
-    const pointRadius = 10 / zoomLevel;
-    const x = Number.parseFloat(path.getAttribute('x') || '0');
-    const y = Number.parseFloat(path.getAttribute('y') || '0');
-    const circle = document.createElementNS(svgNS, 'circle');
-    circle.setAttribute('cx', String(x));
-    circle.setAttribute('cy', String(y));
-    circle.setAttribute('r', String(pointRadius));
-    circle.setAttribute('fill', '#3b82f6');
-    circle.setAttribute('stroke', '#1f2937');
-    circle.setAttribute('stroke-width', '1');
-    circle.style.cursor = 'grab';
-    circle.style.pointerEvents = 'auto';
+    const box = getTextBounds(path);
+    const controlSize = 12 / zoomLevel;
+    const halfControlSize = controlSize / 2;
+    const moveRadius = 10 / zoomLevel;
+    const corners = [
+      [box.left, box.top],
+      [box.right, box.top],
+      [box.right, box.bottom],
+      [box.left, box.bottom]
+    ];
 
-    circle.addEventListener('mousedown', (e) => {
+    corners.forEach((cornerPt, cornerIdx) => {
+      const sq = document.createElementNS(svgNS, 'rect');
+      sq.setAttribute('x', String(cornerPt[0] - halfControlSize));
+      sq.setAttribute('y', String(cornerPt[1] - halfControlSize));
+      sq.setAttribute('width', String(controlSize));
+      sq.setAttribute('height', String(controlSize));
+      sq.setAttribute('fill', '#3b82f6');
+      sq.setAttribute('stroke', '#1f2937');
+      sq.setAttribute('stroke-width', '1');
+      sq.style.cursor = 'nwse-resize';
+      sq.style.pointerEvents = 'auto';
+
+      sq.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const handle = editHandles.find((h) => h.element === sq);
+        if (handle) {
+          pushHistoryState();
+          const oppositePt = corners[(cornerIdx + 2) % 4];
+          handle.data.start = {
+            pointerX: (e.clientX - canvasViewport.getBoundingClientRect().left - panX) / zoomLevel,
+            pointerY: (e.clientY - canvasViewport.getBoundingClientRect().top - panY) / zoomLevel,
+            box,
+            fontSize: Number.parseFloat(path.getAttribute('font-size') || '48') || 48,
+            textX: Number.parseFloat(path.getAttribute('x') || '0'),
+            textY: Number.parseFloat(path.getAttribute('y') || '0'),
+            anchor: { x: oppositePt[0], y: oppositePt[1] }
+          };
+          handle.isDragging = true;
+        }
+      });
+
+      tempGroup.appendChild(sq);
+      editHandles.push({ element: sq, data: { type: 'text-bbox-corner', corner: cornerIdx }, isDragging: false });
+    });
+
+    const move = document.createElementNS(svgNS, 'circle');
+    move.setAttribute('cx', String((box.left + box.right) / 2));
+    move.setAttribute('cy', String((box.top + box.bottom) / 2));
+    move.setAttribute('r', String(moveRadius));
+    move.setAttribute('fill', '#22c55e');
+    move.setAttribute('stroke', '#1f2937');
+    move.setAttribute('stroke-width', '1');
+    move.style.cursor = 'grab';
+    move.style.pointerEvents = 'auto';
+
+    move.addEventListener('mousedown', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const handle = editHandles.find((h) => h.element === circle);
+      const handle = editHandles.find((h) => h.element === move);
       if (handle) {
         pushHistoryState();
+        handle.data.start = {
+          pointerX: (e.clientX - canvasViewport.getBoundingClientRect().left - panX) / zoomLevel,
+          pointerY: (e.clientY - canvasViewport.getBoundingClientRect().top - panY) / zoomLevel,
+          textX: Number.parseFloat(path.getAttribute('x') || '0'),
+          textY: Number.parseFloat(path.getAttribute('y') || '0')
+        };
         handle.isDragging = true;
       }
     });
 
-    tempGroup.appendChild(circle);
-    editHandles.push({ element: circle, data: { type: 'text-anchor' }, isDragging: false });
+    tempGroup.appendChild(move);
+    editHandles.push({ element: move, data: { type: 'text-move' }, isDragging: false });
     return;
   }
 
@@ -1304,6 +1879,36 @@ function renderEditHandles(path) {
       tempGroup.appendChild(circle);
       editHandles.push({ element: circle, data: { type: 'shape-point', pointIdx: idx }, isDragging: false });
     });
+
+    const cx = points.reduce((sum, pt) => sum + pt[0], 0) / points.length;
+    const cy = points.reduce((sum, pt) => sum + pt[1], 0) / points.length;
+    const move = document.createElementNS(svgNS, 'circle');
+    move.setAttribute('cx', String(cx));
+    move.setAttribute('cy', String(cy));
+    move.setAttribute('r', String(pointRadius));
+    move.setAttribute('fill', '#22c55e');
+    move.setAttribute('stroke', '#1f2937');
+    move.setAttribute('stroke-width', '1');
+    move.style.cursor = 'grab';
+    move.style.pointerEvents = 'auto';
+
+    move.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const handle = editHandles.find((h) => h.element === move);
+      if (handle) {
+        pushHistoryState();
+        handle.data.start = {
+          pointerX: (e.clientX - canvasViewport.getBoundingClientRect().left - panX) / zoomLevel,
+          pointerY: (e.clientY - canvasViewport.getBoundingClientRect().top - panY) / zoomLevel,
+          points: points.map((pt) => [pt[0], pt[1]])
+        };
+        handle.isDragging = true;
+      }
+    });
+
+    tempGroup.appendChild(move);
+    editHandles.push({ element: move, data: { type: 'shape-move' }, isDragging: false });
     return;
   }
 
@@ -1363,6 +1968,135 @@ function renderEditHandles(path) {
       tempGroup.appendChild(sq);
       editHandles.push({ element: sq, data: { type: 'bbox-corner', corner: cornerIdx }, isDragging: false });
     });
+
+    const move = document.createElementNS(svgNS, 'circle');
+    move.setAttribute('cx', String((box.left + box.right) / 2));
+    move.setAttribute('cy', String((box.top + box.bottom) / 2));
+    move.setAttribute('r', String(10 / zoomLevel));
+    move.setAttribute('fill', '#22c55e');
+    move.setAttribute('stroke', '#1f2937');
+    move.setAttribute('stroke-width', '1');
+    move.style.cursor = 'grab';
+    move.style.pointerEvents = 'auto';
+
+    move.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const handle = editHandles.find((h) => h.element === move);
+      if (handle) {
+        pushHistoryState();
+        const pointerX = (e.clientX - canvasViewport.getBoundingClientRect().left - panX) / zoomLevel;
+        const pointerY = (e.clientY - canvasViewport.getBoundingClientRect().top - panY) / zoomLevel;
+        if (shapeType === 'rect') {
+          handle.data.start = {
+            pointerX,
+            pointerY,
+            rect: {
+              x: Number.parseFloat(path.getAttribute('x') || '0'),
+              y: Number.parseFloat(path.getAttribute('y') || '0')
+            }
+          };
+        } else if (shapeType === 'ellipse') {
+          handle.data.start = {
+            pointerX,
+            pointerY,
+            ellipse: {
+              cx: Number.parseFloat(path.getAttribute('cx') || '0'),
+              cy: Number.parseFloat(path.getAttribute('cy') || '0')
+            }
+          };
+        } else {
+          handle.data.start = {
+            pointerX,
+            pointerY,
+            circle: {
+              cx: Number.parseFloat(path.getAttribute('cx') || '0'),
+              cy: Number.parseFloat(path.getAttribute('cy') || '0')
+            }
+          };
+        }
+        handle.isDragging = true;
+      }
+    });
+
+    tempGroup.appendChild(move);
+    editHandles.push({ element: move, data: { type: 'shape-move' }, isDragging: false });
+    return;
+  }
+
+  if (shapeType === 'path' && !path.hasAttribute('data-points')) {
+    const box = getPathBounds(path);
+    if (!box || box.width <= 0 || box.height <= 0) return;
+
+    const controlSize = 12 / zoomLevel;
+    const halfControlSize = controlSize / 2;
+    const moveRadius = 10 / zoomLevel;
+    const corners = [
+      [box.left, box.top],
+      [box.right, box.top],
+      [box.right, box.bottom],
+      [box.left, box.bottom]
+    ];
+
+    corners.forEach((cornerPt, cornerIdx) => {
+      const sq = document.createElementNS(svgNS, 'rect');
+      sq.setAttribute('x', String(cornerPt[0] - halfControlSize));
+      sq.setAttribute('y', String(cornerPt[1] - halfControlSize));
+      sq.setAttribute('width', String(controlSize));
+      sq.setAttribute('height', String(controlSize));
+      sq.setAttribute('fill', '#3b82f6');
+      sq.setAttribute('stroke', '#1f2937');
+      sq.setAttribute('stroke-width', '1');
+      sq.style.cursor = 'nwse-resize';
+      sq.style.pointerEvents = 'auto';
+
+      sq.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const handle = editHandles.find((h) => h.element === sq);
+        if (handle) {
+          pushHistoryState();
+          const oppositePt = corners[(cornerIdx + 2) % 4];
+          handle.data.start = {
+            pathData: path.getAttribute('d') || '',
+            box,
+            anchor: { x: oppositePt[0], y: oppositePt[1] }
+          };
+          handle.isDragging = true;
+        }
+      });
+
+      tempGroup.appendChild(sq);
+      editHandles.push({ element: sq, data: { type: 'path-bbox-corner', corner: cornerIdx }, isDragging: false });
+    });
+
+    const move = document.createElementNS(svgNS, 'circle');
+    move.setAttribute('cx', String((box.left + box.right) / 2));
+    move.setAttribute('cy', String((box.top + box.bottom) / 2));
+    move.setAttribute('r', String(moveRadius));
+    move.setAttribute('fill', '#22c55e');
+    move.setAttribute('stroke', '#1f2937');
+    move.setAttribute('stroke-width', '1');
+    move.style.cursor = 'grab';
+    move.style.pointerEvents = 'auto';
+
+    move.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const handle = editHandles.find((h) => h.element === move);
+      if (handle) {
+        pushHistoryState();
+        handle.data.start = {
+          pointerX: (e.clientX - canvasViewport.getBoundingClientRect().left - panX) / zoomLevel,
+          pointerY: (e.clientY - canvasViewport.getBoundingClientRect().top - panY) / zoomLevel,
+          pathData: path.getAttribute('d') || ''
+        };
+        handle.isDragging = true;
+      }
+    });
+
+    tempGroup.appendChild(move);
+    editHandles.push({ element: move, data: { type: 'shape-move' }, isDragging: false });
     return;
   }
 
@@ -1478,6 +2212,37 @@ function renderEditHandles(path) {
       editHandles.push({ element: sq, data: { type: 'control', pointIdx: idx, controlType: 'cp2' }, isDragging: false });
     }
   });
+
+  const move = document.createElementNS(svgNS, 'circle');
+  const cx = points.reduce((sum, pt) => sum + pt[0], 0) / points.length;
+  const cy = points.reduce((sum, pt) => sum + pt[1], 0) / points.length;
+  move.setAttribute('cx', String(cx));
+  move.setAttribute('cy', String(cy));
+  move.setAttribute('r', String(pointRadius));
+  move.setAttribute('fill', '#22c55e');
+  move.setAttribute('stroke', '#1f2937');
+  move.setAttribute('stroke-width', '1');
+  move.style.cursor = 'grab';
+  move.style.pointerEvents = 'auto';
+
+  move.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const handle = editHandles.find((h) => h.element === move);
+    if (handle) {
+      pushHistoryState();
+      handle.data.start = {
+        pointerX: (e.clientX - canvasViewport.getBoundingClientRect().left - panX) / zoomLevel,
+        pointerY: (e.clientY - canvasViewport.getBoundingClientRect().top - panY) / zoomLevel,
+        points: points.map((pt) => [pt[0], pt[1]]),
+        controls: JSON.parse(JSON.stringify(controls || []))
+      };
+      handle.isDragging = true;
+    }
+  });
+
+  tempGroup.appendChild(move);
+  editHandles.push({ element: move, data: { type: 'shape-move' }, isDragging: false });
 }
 
 function enterEditMode(path) {
@@ -1531,6 +2296,187 @@ function buildPathData(points, curveTypes, controls, closed) {
   return path;
 }
 
+function parsePointsAttribute(pointsText) {
+  return String(pointsText || '')
+    .trim()
+    .split(/\s+/)
+    .map((pair) => pair.split(',').map((n) => Number.parseFloat(n)))
+    .filter((pair) => pair.length === 2 && Number.isFinite(pair[0]) && Number.isFinite(pair[1]));
+}
+
+function isBooleanEligibleShape(shape) {
+  if (!shape) return false;
+  const tag = shape.tagName.toLowerCase();
+  return tag === 'path' || tag === 'rect' || tag === 'ellipse' || tag === 'circle' || tag === 'polygon';
+}
+
+function shapeToPathData(shape) {
+  const tag = shape.tagName.toLowerCase();
+
+  if (tag === 'path') {
+    return shape.getAttribute('d') || '';
+  }
+
+  if (tag === 'rect') {
+    const x = Number.parseFloat(shape.getAttribute('x') || '0');
+    const y = Number.parseFloat(shape.getAttribute('y') || '0');
+    const w = Number.parseFloat(shape.getAttribute('width') || '0');
+    const h = Number.parseFloat(shape.getAttribute('height') || '0');
+    if (w <= 0 || h <= 0) return '';
+    return `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+  }
+
+  if (tag === 'ellipse') {
+    const cx = Number.parseFloat(shape.getAttribute('cx') || '0');
+    const cy = Number.parseFloat(shape.getAttribute('cy') || '0');
+    const rx = Number.parseFloat(shape.getAttribute('rx') || '0');
+    const ry = Number.parseFloat(shape.getAttribute('ry') || '0');
+    if (rx <= 0 || ry <= 0) return '';
+    return `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy} Z`;
+  }
+
+  if (tag === 'circle') {
+    const cx = Number.parseFloat(shape.getAttribute('cx') || '0');
+    const cy = Number.parseFloat(shape.getAttribute('cy') || '0');
+    const r = Number.parseFloat(shape.getAttribute('r') || '0');
+    if (r <= 0) return '';
+    return `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} Z`;
+  }
+
+  if (tag === 'polygon') {
+    const points = parsePointsAttribute(shape.getAttribute('points'));
+    if (points.length < 3) return '';
+    const [firstX, firstY] = points[0];
+    const tail = points.slice(1).map(([x, y]) => `L ${x} ${y}`).join(' ');
+    return `M ${firstX} ${firstY} ${tail} Z`;
+  }
+
+  return '';
+}
+
+function applyBooleanResultStyle(sourceShape, targetPath) {
+  const baseFill = sourceShape.getAttribute('fill') || 'none';
+  const baseStroke = sourceShape.getAttribute('stroke') || 'none';
+  const baseStrokeWidth = sourceShape.getAttribute('stroke-width') || '1';
+  const baseGradient = sourceShape.getAttribute('data-gradient');
+
+  targetPath.setAttribute('fill', baseFill);
+  targetPath.setAttribute('stroke', baseStroke);
+  targetPath.setAttribute('stroke-width', baseStrokeWidth);
+
+  if (baseGradient) {
+    targetPath.setAttribute('data-gradient', baseGradient);
+  } else {
+    targetPath.removeAttribute('data-gradient');
+  }
+
+  targetPath.style.cursor = 'pointer';
+}
+
+function runBooleanOperation(operation) {
+  const ordered = selectedPaths.filter(Boolean);
+  if (ordered.length < 2) {
+    window.alert('Select at least two closed shapes for boolean operations. Use Shift/Ctrl/Cmd + click to multi-select.');
+    return;
+  }
+
+  if (!window.paper || !window.paper.PaperScope) {
+    window.alert('Boolean operations require Paper.js, but it is not available.');
+    return;
+  }
+
+  const ineligible = ordered.filter((shape) => !isBooleanEligibleShape(shape));
+  if (ineligible.length > 0) {
+    window.alert('Boolean operations currently support closed vector shapes only: path, rectangle, ellipse, circle, and polygon.');
+    return;
+  }
+
+  const baseLayer = getLayerForPath(ordered[0]);
+  if (!baseLayer) return;
+
+  const selectedLayers = ordered.map((shape) => getLayerForPath(shape)).filter(Boolean);
+  const hasLockedLayer = selectedLayers.some((layer) => layer.locked);
+  if (hasLockedLayer) {
+    window.alert('Unlock all selected layers before running boolean operations.');
+    return;
+  }
+
+  const booleanSourceSnapshot = {
+    operation,
+    createdAt: Date.now(),
+    operands: ordered.map((shape) => snapshotShapeForBoolean(shape)).filter(Boolean)
+  };
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(baseCanvasWidth));
+  canvas.height = Math.max(1, Math.round(baseCanvasHeight));
+  const scope = new window.paper.PaperScope();
+  scope.setup(canvas);
+
+  const toPaperPath = (shape) => {
+    const d = shapeToPathData(shape);
+    if (!d) return null;
+    try {
+      return new scope.CompoundPath(d);
+    } catch (_) {
+      return null;
+    }
+  };
+
+  let result = toPaperPath(ordered[0]);
+  if (!result) {
+    window.alert('Could not parse the first selected shape for boolean operation.');
+    return;
+  }
+
+  for (let i = 1; i < ordered.length; i++) {
+    const next = toPaperPath(ordered[i]);
+    if (!next) {
+      result.remove();
+      scope.project.clear();
+      window.alert('One of the selected shapes could not be parsed for boolean operation.');
+      return;
+    }
+
+    let combined = null;
+    if (operation === 'union') combined = result.unite(next);
+    else if (operation === 'intersect') combined = result.intersect(next);
+    else combined = result.subtract(next);
+
+    result.remove();
+    next.remove();
+    result = combined;
+  }
+
+  const finalPathData = (result && result.pathData) ? String(result.pathData).trim() : '';
+  if (!finalPathData) {
+    result.remove();
+    scope.project.clear();
+    window.alert('This boolean operation produced an empty result.');
+    return;
+  }
+
+  pushHistoryState();
+
+  const resultPath = document.createElementNS(svgNS, 'path');
+  resultPath.setAttribute('d', finalPathData);
+  applyBooleanResultStyle(ordered[0], resultPath);
+  writeBooleanMetadata(resultPath, {
+    booleanOp: operation,
+    booleanSource: JSON.stringify(booleanSourceSnapshot)
+  });
+  bindPathInteractions(resultPath);
+
+  const firstShape = ordered[0];
+  firstShape.insertAdjacentElement('afterend', resultPath);
+  removePolygons(ordered, false);
+  setSelectedPath(resultPath);
+
+  result.remove();
+  scope.project.clear();
+  renderLayersList();
+}
+
 function getActiveLayer() {
   return layers.find((layer) => layer.id === activeLayerId) || null;
 }
@@ -1562,7 +2508,13 @@ function bindPathInteractions(shape) {
     if (currentTool === 'eyedropper') return;
     if (isPathLocked(shape)) return;
 
-    setSelectedPath(shape);
+    const multiSelectPressed = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (multiSelectPressed) {
+      if (editingPath) exitEditMode();
+      togglePathSelection(shape);
+    } else {
+      setSelectedPath(shape);
+    }
     e.stopPropagation();
   });
 
@@ -1575,7 +2527,7 @@ function bindPathInteractions(shape) {
     const tag = shape.tagName.toLowerCase();
     if (!['path', 'rect', 'ellipse', 'circle', 'line', 'polyline', 'polygon', 'text'].includes(tag)) return;
 
-    if (selectedPath !== shape) {
+    if (!selectedPaths.includes(shape) || selectedPaths.length > 1) {
       setSelectedPath(shape);
       return;
     }
@@ -1628,6 +2580,12 @@ function setLayerLocked(layerId, locked) {
     exitEditMode();
   }
 
+  if (layer.locked) {
+    selectedPaths
+      .filter((shape) => getLayerForPath(shape)?.id === layerId)
+      .forEach((shape) => removePathFromSelection(shape));
+  }
+
   renderLayersList();
 }
 
@@ -1658,7 +2616,9 @@ function deleteLayer(layerId) {
 
   const layer = layers[idx];
   if (editingPath && getLayerForPath(editingPath)?.id === layerId) exitEditMode();
-  if (selectedPath && getLayerForPath(selectedPath)?.id === layerId) setSelectedPath(null);
+  selectedPaths
+    .filter((shape) => getLayerForPath(shape)?.id === layerId)
+    .forEach((shape) => removePathFromSelection(shape));
 
   layer.group.remove();
   layers.splice(idx, 1);
@@ -2107,6 +3067,25 @@ function getExportBounds() {
     shapes.forEach((shape) => {
       const type = shape.tagName.toLowerCase();
 
+      if (type === 'path') {
+        try {
+          const box = shape.getBBox();
+          let pad = 0;
+          const stroke = (shape.getAttribute('stroke') || 'none').trim().toLowerCase();
+          if (stroke !== 'none') {
+            const strokeWidth = Number.parseFloat(shape.getAttribute('stroke-width') || '0');
+            if (Number.isFinite(strokeWidth) && strokeWidth > 0) {
+              pad = strokeWidth / 2;
+            }
+          }
+          expandBounds(bounds, box.x - pad, box.y - pad);
+          expandBounds(bounds, box.x + box.width + pad, box.y + box.height + pad);
+          return;
+        } catch (_) {
+          // Fall back to metadata-based bounds below if getBBox fails.
+        }
+      }
+
       if (type === 'text') {
         const x = Number.parseFloat(shape.getAttribute('x') || '0');
         const y = Number.parseFloat(shape.getAttribute('y') || '0');
@@ -2296,6 +3275,138 @@ function exportSvg() {
     }
   }
 
+  if (!optimizeExportPathsCheck || optimizeExportPathsCheck.checked) {
+    const optimizePathData = (pathData) => {
+      if (!window.paper || !window.paper.PaperScope || !pathData) return pathData;
+
+      const scope = new window.paper.PaperScope();
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(baseCanvasWidth));
+      canvas.height = Math.max(1, Math.round(baseCanvasHeight));
+      scope.setup(canvas);
+
+      let item = null;
+      try {
+        item = new scope.CompoundPath(pathData);
+      } catch (_) {
+        try {
+          item = new scope.Path(pathData);
+        } catch (_) {
+          scope.project.clear();
+          return pathData;
+        }
+      }
+
+      const flattenTolerance = 0.6;
+      const simplifyTolerance = 0.2;
+
+      const pointLineDistance = (px, py, ax, ay, bx, by) => {
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq < 1e-8) return Math.hypot(px - ax, py - ay);
+        const t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+        const projX = ax + t * dx;
+        const projY = ay + t * dy;
+        return Math.hypot(px - projX, py - projY);
+      };
+
+      const linearSimplifyPath = (p, tolerance) => {
+        if (!p || !p.segments || p.segments.length < 3) return;
+
+        const removeCollinearPoint = (prevPt, currPt, nextPt) => {
+          const dist = pointLineDistance(currPt.x, currPt.y, prevPt.x, prevPt.y, nextPt.x, nextPt.y);
+          return dist <= tolerance;
+        };
+
+        if (p.closed) {
+          let changed = true;
+          while (changed && p.segments.length > 3) {
+            changed = false;
+            const n = p.segments.length;
+            for (let i = n - 1; i >= 0; i--) {
+              const prev = p.segments[(i - 1 + n) % n].point;
+              const curr = p.segments[i].point;
+              const next = p.segments[(i + 1) % n].point;
+              if (removeCollinearPoint(prev, curr, next) && p.segments.length > 3) {
+                p.removeSegment(i);
+                changed = true;
+              }
+            }
+          }
+        } else {
+          for (let i = p.segments.length - 2; i >= 1; i--) {
+            const prev = p.segments[i - 1].point;
+            const curr = p.segments[i].point;
+            const next = p.segments[i + 1].point;
+            if (removeCollinearPoint(prev, curr, next) && p.segments.length > 2) {
+              p.removeSegment(i);
+            }
+          }
+        }
+      };
+
+      const applyToPath = (p) => {
+        if (!p || !p.segments || p.segments.length < 2) return;
+        p.flatten(flattenTolerance);
+        linearSimplifyPath(p, simplifyTolerance);
+      };
+
+      if (item instanceof scope.CompoundPath) {
+        item.children.forEach((child) => applyToPath(child));
+      } else {
+        applyToPath(item);
+      }
+
+      const optimized = String(item.pathData || '').trim() || pathData;
+      item.remove();
+      scope.project.clear();
+      return optimized;
+    };
+
+    const paths = Array.from(clone.querySelectorAll('path'));
+    paths.forEach((pathEl) => {
+      const original = pathEl.getAttribute('d');
+      if (!original) return;
+      const optimized = optimizePathData(original);
+      if (optimized) pathEl.setAttribute('d', optimized);
+    });
+
+    // Strip editor-only metadata for a clean output file.
+    const elements = Array.from(clone.querySelectorAll('*'));
+    elements.forEach((el) => {
+      el.removeAttribute('data-boolean-op');
+      el.removeAttribute('data-boolean-source');
+      el.removeAttribute('data-points');
+      el.removeAttribute('data-curve-types');
+      el.removeAttribute('data-controls');
+
+      const cls = (el.getAttribute('class') || '').trim();
+      if (cls) {
+        const cleaned = cls
+          .split(/\s+/)
+          .filter((name) => !['selectedPolygon', 'selectedPrimary', 'editingPolygon'].includes(name));
+        if (cleaned.length > 0) el.setAttribute('class', cleaned.join(' '));
+        else el.removeAttribute('class');
+      }
+
+      const style = el.getAttribute('style');
+      if (style) {
+        const cleanedStyle = style
+          .split(';')
+          .map((part) => part.trim())
+          .filter(Boolean)
+          .filter((part) => {
+            const prop = part.split(':')[0]?.trim().toLowerCase();
+            return prop !== 'cursor' && prop !== 'user-select';
+          })
+          .join('; ');
+        if (cleanedStyle) el.setAttribute('style', cleanedStyle);
+        else el.removeAttribute('style');
+      }
+    });
+  }
+
   const translatedGroup = document.createElementNS(svgNS, 'g');
   translatedGroup.setAttribute('transform', `translate(${-exportMinX} ${-exportMinY})`);
   while (clone.firstChild) {
@@ -2401,9 +3512,9 @@ document.addEventListener('keydown', (e) => {
     if (editingPath) {
       e.preventDefault();
       removePolygon(editingPath, true);
-    } else if (selectedPath) {
+    } else if (selectedPaths.length > 0) {
       e.preventDefault();
-      removePolygon(selectedPath, true);
+      removePolygons(selectedPaths.slice(), true);
     }
   }
 
@@ -2650,6 +3761,9 @@ document.addEventListener('mouseup', (e) => {
 });
 
 exportBtn.addEventListener('click', exportSvg);
+if (booleanUnionBtn) booleanUnionBtn.addEventListener('click', () => runBooleanOperation('union'));
+if (booleanIntersectBtn) booleanIntersectBtn.addEventListener('click', () => runBooleanOperation('intersect'));
+if (booleanSubtractBtn) booleanSubtractBtn.addEventListener('click', () => runBooleanOperation('subtract'));
 if (undoBtn) undoBtn.addEventListener('click', undo);
 if (redoBtn) redoBtn.addEventListener('click', redo);
 if (helpBtn) helpBtn.addEventListener('click', () => toggleHelp());
