@@ -19,7 +19,11 @@ Image Tracer is a small browser-based tracing tool for turning raster images int
 4. Switch between **Straight**, **Smooth**, and **Complex** for the next segment while tracing.
 5. Use **Fill** to recolor a polygon or **Eyedropper** to sample a color from the image.
 6. Manage layers from the **Vector Layers** panel.
-7. Click **Export SVG** to download the traced result.
+7. Click **Export SVG** to download the traced result. If you want to convert all text to SVG paths (for maximum compatibility), enable the **Convert text to paths** option before exporting. 
+	- ⚠️ **Warning:** Converting text to paths may make the SVG file very large, especially for long or multi-line text.
+	- To convert text to paths, you must load the matching font file (TTF/OTF/WOFF) using the font file input. Browser/system fonts cannot be converted unless you provide the font file.
+	- If a font is missing, the export will warn you and leave the text as `<text>` elements.
+
 
 ### Helpful shortcuts
 
@@ -49,6 +53,15 @@ python3 -m http.server 8000
 ```
 
 Then open `http://localhost:8000`.
+
+
+## Exporting text as paths
+
+If you enable **Convert text to paths** in the export panel, all text will be converted to SVG `<path>` elements using the loaded font file. This is useful for maximum compatibility, but:
+
+- **SVG file size can increase dramatically** for long or complex text.
+- You must load the font file for any non-standard font you use. System/browser fonts (like Arial, Times, etc.) cannot be converted unless you provide the font file.
+- If a font is missing, the export will warn you and leave the text as `<text>`.
 
 ## Project structure
 
