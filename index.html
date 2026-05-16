@@ -111,6 +111,15 @@
         <input type="range" id="zoomRange" min="0.25" max="4" step="0.05" value="1">
         <p id="zoomLabel">Zoom: 100%</p>
         <button id="darkModeBtn">Enable Dark Mode</button>
+        <label class="simpleCheck" style="margin-top: 0.5rem;">
+          <input type="checkbox" id="gridEnabledCheck">
+          Show grid
+        </label>
+        <label class="simpleCheck" style="gap: 0.5rem; margin-bottom: 0;">
+          <span style="flex-shrink:0;">Grid size</span>
+          <input id="gridSizeInput" type="number" min="6" step="0.1" value="32" style="width: 100%;">
+          <span style="flex-shrink:0;">px</span>
+        </label>
       </section>
 
       <section class="panel">
@@ -167,6 +176,8 @@
             <tr><td><kbd>Scroll</kbd></td><td>Zoom in / out toward cursor</td></tr>
             <tr><td><kbd>Space</kbd> + drag</td><td>Pan canvas</td></tr>
             <tr><td><kbd>Middle mouse</kbd> drag</td><td>Pan canvas</td></tr>
+            <tr><td>Show grid</td><td>Toggle snap-guided grid lines while drawing and resizing</td></tr>
+            <tr><td>Grid size</td><td>Set the grid cell size in pixels</td></tr>
             <tr class="separator"><th colspan="2">Tracing</th></tr>
             <tr><td>Left-click canvas</td><td>Add point</td></tr>
             <tr><td>Click near start</td><td>Close &amp; finish polygon</td></tr>

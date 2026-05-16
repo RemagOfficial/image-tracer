@@ -10,7 +10,7 @@ Image Tracer is a small browser-based tracing tool for turning raster images int
 - Samples colors from the source image with the eyedropper
 - Combines closed shapes using boolean operations (union, intersect, subtract)
 - Organizes artwork into editable vector layers
-- Supports undo/redo, zooming, panning, dark mode, and SVG export
+- Supports undo/redo, zooming, panning, dark mode, grid snapping, and SVG export
 
 ## Using the app
 
@@ -26,8 +26,10 @@ Image Tracer is a small browser-based tracing tool for turning raster images int
 	- **Subtract** removes later-selected shapes from the first selected shape (order matters).
 	- The result is placed on the same layer as the first selected shape.
 7. In **edit mode**, use the green center handle to move shapes/text. Text also has corner handles to scale from its bounding box.
-8. Manage layers from the **Vector Layers** panel.
-9. Click **Export SVG** to download the traced result. If you want to convert all text to SVG paths (for maximum compatibility), enable the **Convert text to paths** option before exporting. 
+8. Use **Show grid** in the **View** panel if you want snap guidance while drawing and resizing.
+9. The grid size is editable in pixels and snapping adapts to zoom: large cell gaps snap to all 9 grid points, medium gaps disable center snapping, and very small gaps snap only to corners.
+10. Manage layers from the **Vector Layers** panel.
+11. Click **Export SVG** to download the traced result. If you want to convert all text to SVG paths (for maximum compatibility), enable the **Convert text to paths** option before exporting. 
 	- **Flatten + simplify paths on export** is enabled by default for cleaner SVG output. Disable it if you need exact original path geometry.
 	- ⚠️ **Warning:** Converting text to paths may make the SVG file very large, especially for long or multi-line text.
 	- To convert text to paths, you must load the matching font file (TTF/OTF/WOFF) using the font file input. Browser/system fonts cannot be converted unless you provide the font file.

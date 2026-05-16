@@ -40,6 +40,8 @@ const textInput = document.getElementById('textInput');
 const textFontSelect = document.getElementById('textFontSelect');
 const textSizeInput = document.getElementById('textSizeInput');
 const fontFileInput = document.getElementById('fontFileInput');
+const gridEnabledCheck = document.getElementById('gridEnabledCheck');
+const gridSizeInput = document.getElementById('gridSizeInput');
 const optimizeExportPathsCheck = document.getElementById('optimizeExportPathsCheck');
 const convertTextToPathsCheck = document.getElementById('convertTextToPathsCheck');
 const fillTypeSolidBtn = document.getElementById('fillTypeSolidBtn');
@@ -85,6 +87,8 @@ let gradIdCounter = 0;
 let strokeEnabled = true;
 let strokeColor = '#1f1f1f';
 let strokeWidth = 1;
+let gridEnabled = false;
+let gridSizeValue = 32;
 let imageVisible = true;
 let svgVisible = true;
 let darkModeEnabled = false;
@@ -162,6 +166,20 @@ tempGroup.appendChild(tempPolylineOuter);
 tempGroup.appendChild(tempPolyline);
 tempGroup.appendChild(tempCircleOuter);
 tempGroup.appendChild(tempCircle);
+const gridGroup = document.createElementNS(svgNS, 'svg');
+gridGroup.setAttribute('id', 'gridGroup');
+gridGroup.setAttribute('x', '0');
+gridGroup.setAttribute('y', '0');
+gridGroup.setAttribute('preserveAspectRatio', 'none');
+gridGroup.setAttribute('aria-hidden', 'true');
+gridGroup.style.position = 'absolute';
+gridGroup.style.top = '0';
+gridGroup.style.left = '0';
+gridGroup.style.overflow = 'visible';
+gridGroup.style.pointerEvents = 'none';
+const gridContentGroup = document.createElementNS(svgNS, 'g');
+gridGroup.appendChild(gridContentGroup);
+svgOverlay.appendChild(gridGroup);
 svgOverlay.appendChild(tempGroup);
 
 function hexFromRgb(rgbText) {
@@ -189,6 +207,146 @@ function updateColorPreview() {
       colorPreview.style.background = `linear-gradient(${gradAngleValue}deg, ${stopStr})`;
     } else {
       colorPreview.style.background = `radial-gradient(circle, ${stopStr})`;
+    }
+  }
+}
+
+function getGridConfig() {
+  const size = Math.max(6, Number.parseFloat(gridSizeInput?.value || String(gridSizeValue)) || gridSizeValue);
+  const screenCellSize = size * zoomLevel;
+  const screenGap = screenCellSize / 2;
+  let mode = 'corners';
+  if (screenGap >= 20) mode = 'all';
+  else if (screenGap >= 8) mode = 'no-center';
+  return {
+    enabled: !!gridEnabledCheck?.checked && gridEnabled,
+    size,
+    halfSize: size / 2,
+    screenCellSize,
+    screenGap,
+    mode
+  };
+}
+
+function gridPointAllowed(ix, iy, mode) {
+  const evenX = Math.abs(ix) % 2 === 0;
+  const evenY = Math.abs(iy) % 2 === 0;
+  const oddX = !evenX;
+  const oddY = !evenY;
+  if (mode === 'all') return true;
+  if (mode === 'no-center') return !(oddX && oddY);
+  return evenX && evenY;
+}
+
+function snapPointToGrid(point) {
+  const config = getGridConfig();
+  if (!config.enabled) return point;
+
+  const [x, y] = point;
+  const step = config.halfSize;
+  if (!Number.isFinite(step) || step <= 0) return point;
+
+  const baseX = Math.round(x / step);
+  const baseY = Math.round(y / step);
+  let bestPoint = null;
+  let bestScreenDist = Number.POSITIVE_INFINITY;
+
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const ix = baseX + dx;
+      const iy = baseY + dy;
+      if (!gridPointAllowed(ix, iy, config.mode)) continue;
+      const candidateX = ix * step;
+      const candidateY = iy * step;
+      const screenDist = Math.hypot((candidateX - x) * zoomLevel, (candidateY - y) * zoomLevel);
+      if (screenDist < bestScreenDist) {
+        bestScreenDist = screenDist;
+        bestPoint = [candidateX, candidateY];
+      }
+    }
+  }
+
+  const snapThreshold = Math.min(10, Math.max(3, config.screenGap * 0.5));
+  return bestPoint && bestScreenDist <= snapThreshold ? bestPoint : point;
+}
+
+function updateGridOverlay() {
+  const config = getGridConfig();
+  const width = Math.max(0, canvasWrapper.clientWidth || baseCanvasWidth);
+  const height = Math.max(0, canvasWrapper.clientHeight || baseCanvasHeight);
+  if (!gridGroup) return;
+  gridContentGroup.innerHTML = '';
+
+  if (!config.enabled) {
+    gridGroup.style.display = 'none';
+    return;
+  }
+
+  gridGroup.style.display = '';
+  gridGroup.setAttribute('width', String(width));
+  gridGroup.setAttribute('height', String(height));
+  gridGroup.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+  const size = config.size;
+  const halfSize = config.halfSize;
+  const tinyGridMode = config.screenCellSize < 18;
+  const pointRadius = tinyGridMode ? Math.max(3.25, 14 / Math.max(1, config.screenCellSize)) : 0;
+
+  const makeLine = (x1, y1, x2, y2, stroke, widthValue, dash) => {
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', String(x1));
+    line.setAttribute('y1', String(y1));
+    line.setAttribute('x2', String(x2));
+    line.setAttribute('y2', String(y2));
+    line.setAttribute('stroke', stroke);
+    line.setAttribute('stroke-width', String(widthValue));
+    line.setAttribute('shape-rendering', 'crispEdges');
+    if (dash) line.setAttribute('stroke-dasharray', dash);
+    return line;
+  };
+
+  const makeDot = (x, y, fill, opacity) => {
+    const dot = document.createElementNS(svgNS, 'circle');
+    dot.setAttribute('cx', String(x));
+    dot.setAttribute('cy', String(y));
+    dot.setAttribute('r', String(pointRadius));
+    dot.setAttribute('fill', fill);
+    dot.setAttribute('stroke', 'rgba(255,255,255,0.65)');
+    dot.setAttribute('stroke-width', String(Math.max(1, pointRadius * 0.3)));
+    dot.setAttribute('opacity', String(opacity));
+    dot.setAttribute('shape-rendering', 'geometricPrecision');
+    return dot;
+  };
+
+  if (!tinyGridMode) {
+    for (let x = 0; x <= width + 0.0001; x += size) {
+      gridContentGroup.appendChild(makeLine(x, 0, x, height, 'rgba(120, 130, 140, 0.34)', 1));
+    }
+    for (let y = 0; y <= height + 0.0001; y += size) {
+      gridContentGroup.appendChild(makeLine(0, y, width, y, 'rgba(120, 130, 140, 0.34)', 1));
+    }
+
+    if (config.mode !== 'corners') {
+      for (let x = halfSize; x <= width + 0.0001; x += size) {
+        gridContentGroup.appendChild(makeLine(x, 0, x, height, 'rgba(120, 130, 140, 0.18)', 1, '3 3'));
+      }
+      for (let y = halfSize; y <= height + 0.0001; y += size) {
+        gridContentGroup.appendChild(makeLine(0, y, width, y, 'rgba(120, 130, 140, 0.18)', 1, '3 3'));
+      }
+    }
+    return;
+  }
+
+  for (let gx = 0; gx <= width + 0.0001; gx += size) {
+    for (let gy = 0; gy <= height + 0.0001; gy += size) {
+      gridContentGroup.appendChild(makeDot(gx, gy, 'rgba(15, 108, 103, 0.95)', 1));
+      if (config.mode !== 'corners') {
+        gridContentGroup.appendChild(makeDot(gx + halfSize, gy, 'rgba(15, 108, 103, 0.80)', 1));
+        gridContentGroup.appendChild(makeDot(gx, gy + halfSize, 'rgba(15, 108, 103, 0.80)', 1));
+        if (config.mode === 'all') {
+          gridContentGroup.appendChild(makeDot(gx + halfSize, gy + halfSize, 'rgba(239, 108, 47, 0.95)', 1));
+        }
+      }
     }
   }
 }
@@ -1473,8 +1631,9 @@ function handleEditDrag(e) {
   if (!currentDrag) return;
   
   const rect = canvasViewport.getBoundingClientRect();
-  const x = (e.clientX - rect.left - panX) / zoomLevel;
-  const y = (e.clientY - rect.top - panY) / zoomLevel;
+  const rawX = (e.clientX - rect.left - panX) / zoomLevel;
+  const rawY = (e.clientY - rect.top - panY) / zoomLevel;
+  const [x, y] = getSnappedSvgPoint([rawX, rawY]);
   const shapeType = editingPath.tagName.toLowerCase();
 
   if (shapeType === 'path' && !editingPath.hasAttribute('data-points')) {
@@ -2902,6 +3061,10 @@ function getSvgPoint(e) {
   return [x, y];
 }
 
+function getSnappedSvgPoint(point) {
+  return snapPointToGrid(point);
+}
+
 function handleTraceClick(point) {
   const [x, y] = point;
   if (!tracing) {
@@ -3019,15 +3182,22 @@ function setCanvasSize(width, height) {
   imageCanvas.height = height;
   imageCanvas.style.width = `${width}px`;
   imageCanvas.style.height = `${height}px`;
-  svgOverlay.setAttribute('width', String(width));
-  svgOverlay.setAttribute('height', String(height));
-  svgOverlay.style.width = `${width}px`;
-  svgOverlay.style.height = `${height}px`;
-  canvasWrapper.style.width = `${width}px`;
-  canvasWrapper.style.height = `${height}px`;
   baseCanvasWidth = width;
   baseCanvasHeight = height;
+  syncCanvasSurfaceSize();
   requestAnimationFrame(centerImage);
+}
+
+function syncCanvasSurfaceSize() {
+  const surfaceWidth = Math.max(baseCanvasWidth, canvasViewport.clientWidth || 0);
+  const surfaceHeight = Math.max(baseCanvasHeight, canvasViewport.clientHeight || 0);
+  canvasWrapper.style.width = `${surfaceWidth}px`;
+  canvasWrapper.style.height = `${surfaceHeight}px`;
+  svgOverlay.setAttribute('width', String(surfaceWidth));
+  svgOverlay.setAttribute('height', String(surfaceHeight));
+  svgOverlay.style.width = `${surfaceWidth}px`;
+  svgOverlay.style.height = `${surfaceHeight}px`;
+  updateGridOverlay();
 }
 
 function handleImage(e) {
@@ -3185,6 +3355,8 @@ function exportSvg() {
   const clone = svgOverlay.cloneNode(true);
   const cloneTemp = clone.querySelector('#tempGroup');
   if (cloneTemp) cloneTemp.remove();
+  const cloneGrid = clone.querySelector('#gridGroup');
+  if (cloneGrid) cloneGrid.remove();
 
   if (convertTextToPathsCheck && convertTextToPathsCheck.checked) {
     const textElements = Array.from(clone.querySelectorAll('text'));
@@ -3606,19 +3778,19 @@ canvasViewport.addEventListener('mousemove', (e) => {
   if (isPanning) return;
 
   if (polylineDrawing) {
-    polylineHoverPoint = getSvgPoint(e);
+    polylineHoverPoint = getSnappedSvgPoint(getSvgPoint(e));
     renderTempPath();
     return;
   }
 
   if (shapeDrawing) {
-    shapeHoverPoint = getSvgPoint(e);
+    shapeHoverPoint = getSnappedSvgPoint(getSvgPoint(e));
     renderTempShapePath();
     return;
   }
 
   if (!tracing) return;
-  hoverPoint = getSvgPoint(e);
+  hoverPoint = getSnappedSvgPoint(getSvgPoint(e));
   renderTempPath();
 });
 
@@ -3678,6 +3850,10 @@ darkModeBtn.addEventListener('click', () => {
   setDarkMode(!darkModeEnabled);
 });
 
+window.addEventListener('resize', () => {
+  syncCanvasSurfaceSize();
+});
+
 canvasViewport.addEventListener('wheel', (e) => {
   e.preventDefault();
   const rect = canvasViewport.getBoundingClientRect();
@@ -3715,7 +3891,7 @@ canvasViewport.addEventListener('mousedown', (e) => {
   const activeLayer = getActiveLayer();
   if (activeLayer && activeLayer.locked) return;
 
-  const point = getSvgPoint(e);
+  const point = getSnappedSvgPoint(getSvgPoint(e));
   if (currentTool === 'text') {
     const textValue = (textInput && textInput.value.trim()) ? textInput.value : 'Text';
     const fontFamily = textFontSelect ? textFontSelect.value : 'Arial';
@@ -3819,6 +3995,23 @@ if (strokeColorPicker) {
 if (strokeWidthInput) {
   strokeWidthInput.addEventListener('input', (e) => {
     strokeWidth = Math.max(0, Number(e.target.value) || 0);
+  });
+}
+
+if (gridEnabledCheck) {
+  gridEnabledCheck.addEventListener('change', (e) => {
+    gridEnabled = e.target.checked;
+    updateGridOverlay();
+  });
+}
+
+if (gridSizeInput) {
+  gridSizeInput.addEventListener('input', (e) => {
+    gridSizeValue = Math.max(6, Number.parseFloat(e.target.value) || gridSizeValue);
+    if (e.target.value !== String(gridSizeValue)) {
+      e.target.value = String(gridSizeValue);
+    }
+    updateGridOverlay();
   });
 }
 
